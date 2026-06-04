@@ -17,5 +17,4 @@
 
 source activate py39
 ### 加载环境
-bash run_pipeline.sh
-### 指定输入、输出文件，并运行uni-mol任务
+python compare-Y6-light-dark.py --epochs 200 --batch_sizes 16 32 64
