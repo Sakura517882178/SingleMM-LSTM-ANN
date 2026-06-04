@@ -6,15 +6,20 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import confusion_matrix
 import argparse
+
+# 白底 → 玫红 自定义 colormap
+_rose_colors = ['#FFFFFF', '#FFE0EC', '#FFB3D0', '#FF66A3', '#E6337A', '#C71585']
+cmap_rose = LinearSegmentedColormap.from_list('white_to_rose', _rose_colors, N=256)
 
 def plot_cm(y_true, y_pred, n_cls, title, acc, save_path):
     cm = confusion_matrix(y_true, y_pred, labels=range(n_cls))
     cm_norm = np.nan_to_num(cm.astype('float') / cm.sum(axis=1, keepdims=True))
 
     fig, ax = plt.subplots(figsize=(8, 7))
-    im = ax.imshow(cm_norm, cmap='RdPu', vmin=0, vmax=1, aspect='auto')
+    im = ax.imshow(cm_norm, cmap=cmap_rose, vmin=0, vmax=1, aspect='auto')
 
     ax.set_xlabel('Predicted label', fontsize=13)
     ax.set_ylabel('True label', fontsize=13)
@@ -79,7 +84,7 @@ def main():
          f"b) Y6-Dark (no plasticity)\nAcc = {acc_d*100:.2f}%", acc_d)]:
         cm = confusion_matrix(yt, yp, labels=range(n_cls))
         cm_norm = np.nan_to_num(cm.astype('float') / cm.sum(axis=1, keepdims=True))
-        im = ax.imshow(cm_norm, cmap='RdPu', vmin=0, vmax=1, aspect='auto')
+        im = ax.imshow(cm_norm, cmap=cmap_rose, vmin=0, vmax=1, aspect='auto')
         ax.set_title(title, fontsize=14, fontweight='bold', pad=10)
         ax.set_xlabel('Predicted label', fontsize=12)
         ax.set_ylabel('True label', fontsize=12)
