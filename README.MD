@@ -19,7 +19,7 @@ The Y6 molecule (a non-fullerene acceptor) forms a single-molecule junction whos
 
 This repository implements a memristive artificial neural network (ANN-M) in which every memristor weight and nonlinear activation is **directly parameterized by the measured Y6 I-V data**. The goal is to demonstrate that a physically constrained, experimentally grounded memristor model can support practical pattern recognition (36-class speech command classification on Google Speech Commands), and that removing photoconductivity (Dark control) abolishes learning.
 
-This addresses a common reviewer concern in neuromorphic computing papers: _are the device parameters realistic, or are they chosen to make the network work?_
+The key question is whether physically realistic device parameters — measured and used as-is — can support practical pattern recognition, or whether hand-tuned values are necessary.
 
 ---
 
@@ -157,7 +157,7 @@ Both groups share: same model architecture, same speech dataset, same optimizer,
 - **Dark** performs at chance level — fixed conductance prevents any synaptic weight adaptation
 - **Δ ≈ 72%** demonstrates that Y6 photoconductivity is not merely beneficial but **necessary**
 
-### Interpretation for Reviewers
+### Interpretation
 
 The Dark control rules out the possibility that the LSTM + attention backbone alone (without memristor plasticity) can solve the task. The near-random dark-state accuracy confirms that:
 
