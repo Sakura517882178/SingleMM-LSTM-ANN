@@ -14,7 +14,7 @@ def plot_cm(y_true, y_pred, n_cls, title, acc, save_path):
     cm_norm = np.nan_to_num(cm.astype('float') / cm.sum(axis=1, keepdims=True))
 
     fig, ax = plt.subplots(figsize=(8, 7))
-    im = ax.imshow(cm_norm, cmap='YlOrRd', vmin=0, vmax=1, aspect='auto')
+    im = ax.imshow(cm_norm, cmap='RdPu', vmin=0, vmax=1, aspect='auto')
 
     ax.set_xlabel('Predicted label', fontsize=13)
     ax.set_ylabel('True label', fontsize=13)
@@ -79,7 +79,7 @@ def main():
          f"b) Y6-Dark (no plasticity)\nAcc = {acc_d*100:.2f}%", acc_d)]:
         cm = confusion_matrix(yt, yp, labels=range(n_cls))
         cm_norm = np.nan_to_num(cm.astype('float') / cm.sum(axis=1, keepdims=True))
-        im = ax.imshow(cm_norm, cmap='YlOrRd', vmin=0, vmax=1, aspect='auto')
+        im = ax.imshow(cm_norm, cmap='RdPu', vmin=0, vmax=1, aspect='auto')
         ax.set_title(title, fontsize=14, fontweight='bold', pad=10)
         ax.set_xlabel('Predicted label', fontsize=12)
         ax.set_ylabel('True label', fontsize=12)

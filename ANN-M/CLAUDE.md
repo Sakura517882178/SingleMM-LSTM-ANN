@@ -9,11 +9,9 @@
 ```
 ├── Y6-data.xlsx              # Y6 光态 50Hz 脉冲 I-V 数据 (实验组)
 ├── Y6-Dark.xlsx              # Y6 暗态 I-V 数据 (对照组)
-├── training-ANN-M.py         # 单组训练脚本 (支持 --y6_data 指定数据文件)
-├── finetune-ANN-M.py         # 微调脚本 (加载预训练权重，可选冻结非忆阻器层)
-├── infer-ANN-M.py            # 推理脚本
 ├── compare-Y6-light-dark.py  # 一键对照实验: 同时训练 Light+Dark 并对比
-├── CMX.py                    # 混淆矩阵计算
+├── infer_light_dark.py       # 推理脚本: 加载 Light/Dark 权重，保存预测 CSV
+├── plot_cm.py                # 混淆矩阵画图: 读取预测 CSV，生成 Light/Dark 对比图
 ├── run_pipeline.sh           # 流水线脚本
 └── job-training.sh           # 作业提交脚本
 ```
@@ -24,7 +22,7 @@
 Y6 I-V 数据 (.xlsx)
     │
     ▼
-load_y6_params()          ← 自动检测光/暗态，提取 Gmin/Gmax/V
+load_y6_params()          ← 自动检测光/暗态，提取 Imin/Imax (nA)
     │
     ▼
 MemristorANN_LSTM_Attn    ← LSTM → Attention → Memristor FC → Memristor Nonlinear → FC
@@ -33,21 +31,21 @@ MemristorANN_LSTM_Attn    ← LSTM → Attention → Memristor FC → Memristor 
 训练/推理 → 语音识别准确率
 ```
 
-## 忆阻器模型 (log 域)
+## 忆阻器模型 (nA 电流域)
 
-忆阻器电流: **I = 10^G × V**，其中 G 存储在 log(G/G₀) 域。
+忆阻器权重直接使用 Y6 实测电流 (nA)，不经过 log 域/电压转换。
 
-- `MemristorLinearI`: 线性层权重，G 初始化为 [Gmin, Gmax] 均匀分布
-- `MemristorNonlinear`: 替代 ReLU，G 初始化为 [Gmin, Gmax] 均匀分布
-- `update_memristor()`: 梯度下降更新 G，clip 到 [Gmin, Gmax]，支持 step 限制和噪声
+- `MemristorLinearI`: 线性层，权重 I 初始化为 [Imin, Imax] 均匀分布 (nA)
+- `MemristorNonlinear`: 替代 ReLU，权重 I 初始化为 [Imin, Imax] 均匀分布 (nA)
+- `update_memristor()`: 梯度下降更新 I，clip 到 [Imin, Imax]，支持 step 限制和噪声
 
 ## Y6 参数提取逻辑 (`load_y6_params`)
 
 ```
 加载 .xlsx → 取稳定区 (t > 240ms, 跳过前12个50Hz forming周期)
     │
-    ├─ tail < 5% (Light):  P5 → Gmin,  P99.9 → Gmax  (动态范围)
-    └─ tail > 5% (Dark):   G > -5 平台均值 → G = 固定值 (Gmin=Gmax, 无塑性)
+    ├─ tail < 5% (Light):  P5 → Imin,  P99.9 → Imax  (动态范围)
+    └─ tail > 5% (Dark):   滤除仪器掉坑后取均值 → I = 固定值 (Imin=Imax, 无塑性)
 ```
 
 ### 当前参数
@@ -55,9 +53,9 @@ MemristorANN_LSTM_Attn    ← LSTM → Attention → Memristor FC → Memristor 
 | | Y6-Light | Y6-Dark |
 |---|---|---|
 | 模式 | 动态范围 | 固定值 |
-| Gmin | -4.14 | -4.58 |
-| Gmax | -2.91 | -4.58 |
-| V | 0.35 V | 0.35 V |
+| Imin | 0.41 nA | 0.29 nA |
+| Imax | 32.26 nA | 0.29 nA |
+| 光暗电流比 | — | 110× |
 
 ## 模型架构
 
@@ -88,11 +86,11 @@ python compare-Y6-light-dark.py --epochs 200 --batch_sizes 16 32 64
 输出对比表格:
 
 ```
-         Batch    Light Acc     Dark Acc      Delta
-            16       75.xx%        xx.xx%     xx.xx%
-            32        xx.xx%        xx.xx%     xx.xx%
-            64        xx.xx%        xx.xx%     xx.xx%
-          Best       75.xx%        2.78%       7x.xx%
+     Batch     Light Acc      Dark Acc       Delta
+        16        58.95%         0.01%      58.94%
+        32         3.83%         0.01%       3.82%
+        64        71.51%         0.01%      71.50%
+      Best        71.51%         0.01%      71.50%
 ```
 
-Dark 因 Gmin=Gmax（固定电导），忆阻器无塑性，准确率应接近随机水平 (~2.8%, 1/36)。
+Dark 因 Imin=Imax（固定电流），忆阻器无塑性，准确率接近 0%。
