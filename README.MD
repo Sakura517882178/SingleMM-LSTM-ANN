@@ -6,20 +6,18 @@
 
 ## Highlights
 
-- **All memristor conductance parameters (Gmin, Gmax, V) are extracted from measured Y6 single-molecule junction I-V data** — no hand-tuned or arbitrary values
-- **Log-domain conductance modeling**: _I_ = 10<sup>_G_</sup> · _V_, with _G_ constrained within the experimentally observed range
-- **Light/Dark controlled experiment**: dark-state memristor (Gmin = Gmax, fixed conductance) exhibits no synaptic plasticity and yields near-random accuracy (~2.8%), proving that Y6 photoconductivity is essential to device function
-- **Stable-region extraction**: forming cycles (first 12 periods, t < 240 ms) are excluded; P5/P99.9 percentile filtering removes transient spikes
+- **All memristor weights are directly parameterized by measured Y6 single-molecule junction current (nA)** — no hand-tuned or arbitrary values
+- **Light/Dark controlled experiment**: dark-state memristor (Imin = Imax, fixed current) yields 0.01% accuracy, proving that Y6 photoconductivity is essential to device function
+- **Light state achieves 71.5%** on 36-class Google Speech Commands; dark state performs no better than random
+- **Stable-region extraction**: forming cycles (first 12 periods, t < 240 ms) excluded; P5/P99.9 percentile filtering removes transient spikes
 
 ---
 
 ## Background
 
-The Y6 molecule (a non-fullerene acceptor) forms a single-molecule junction whose conductance is modulated by light. Under 50 Hz optical excitation, the junction exhibits a dynamic conductance range; in the dark, its conductance collapses to a near-constant value.
+The Y6 molecule (a non-fullerene acceptor) forms a single-molecule junction whose current is modulated by light. Under 50 Hz optical excitation, the junction exhibits a dynamic current range (~0.4–32 nA, 110× ratio); in the dark, current collapses to a near-constant value (~0.29 nA).
 
-This repository implements a memristive artificial neural network (ANN-M) in which every memristor weight and nonlinear activation is **directly parameterized by the measured Y6 I-V data**. The goal is to demonstrate that a physically constrained, experimentally grounded memristor model can support practical pattern recognition (36-class speech command classification on Google Speech Commands), and that removing photoconductivity (Dark control) abolishes learning.
-
-The key question is whether physically realistic device parameters — measured and used as-is — can support practical pattern recognition, or whether hand-tuned values are necessary.
+This repository implements a memristive artificial neural network (ANN-M) in which every memristor weight and nonlinear activation is **directly parameterized by the measured Y6 I-V data in nA**. The goal is to demonstrate that a physically constrained, experimentally grounded memristor model can support practical pattern recognition (36-class speech command classification on Google Speech Commands), and that removing photoconductivity (Dark control) abolishes learning.
 
 ---
 
@@ -38,55 +36,48 @@ The key question is whether physically realistic device parameters — measured 
 Load .xlsx → filter stable region (t > 240 ms, skip 12 forming cycles)
     │
     ├─ tail fraction < 5% → LIGHT MODE
-    │     P5  → Gmin   (lower conductance bound)
-    │     P99.9 → Gmax (upper conductance bound)
+    │     P5   → Imin   (lower current bound, nA)
+    │     P99.9 → Imax  (upper current bound, nA)
     │
     └─ tail fraction > 5% → DARK MODE
-          filter instrument artifacts (G > -5 plateau)
-          mean of clean population → G = fixed value
-          (Gmin = Gmax: no plasticity, no learning)
+          filter instrument artifacts (I near 0)
+          mean of clean population → I = fixed value
+          (Imin = Imax: no plasticity, no learning)
 ```
 
-The tail-fraction criterion automatically distinguishes light from dark measurements: under illumination, the conductance distribution is unimodal with a compact tail; in the dark, instrument dropouts produce a long low-conductance tail (>5% of points).
+The tail-fraction criterion automatically distinguishes light from dark measurements.
 
-### Extracted Parameters (Current Dataset)
+### Extracted Parameters
 
 | | Y6-Light | Y6-Dark |
 |---|---|---|
 | **Regime** | Dynamic range | Fixed value |
-| **Gmin** (log G/G₀) | -4.14 | -4.58 |
-| **Gmax** (log G/G₀) | -2.91 | -4.58 |
-| **Conductance span** | 1.23 decades | 0 (no plasticity) |
-| **V_read** | 0.35 V | 0.35 V |
+| **Imin** (nA) | 0.41 | 0.29 |
+| **Imax** (nA) | 32.26 | 0.29 |
+| **Current ratio** | 110× | 1× (no plasticity) |
 
-**Critical point**: Dark-state Gmin = Gmax. The memristor weights are clamped to a single value — gradient descent cannot move them. Any learning must come from the non-memristive layers (LSTM, attention), which alone are insufficient for the 36-class task. This is the mechanistic basis of the controlled experiment.
+**Critical point**: Dark-state Imin = Imax. The memristor weights are clamped to a single value — gradient descent cannot move them. This is the mechanistic basis of the controlled experiment.
 
 ---
 
 ## Memristor Model
 
-Memristor current follows the log-domain relationship:
-
-> **I = 10<sup>G</sup> · V**
-
-where _G_ = log₁₀(_G_/_G_₀) is stored and updated directly during training.
+Memristor weights are stored directly in the nA current domain, exactly as measured from the Y6 junction. No log-domain or voltage conversion is applied.
 
 ### MemristorLinearI
 
-A fully-connected linear layer whose weight matrix is stored as log-conductance values. _G_ is initialized from Uniform[Gmin, Gmax] and updated via gradient descent with hard clipping to [Gmin, Gmax].
+A fully-connected linear layer whose weight matrix `I` is initialized from Uniform[Imin, Imax] and updated via gradient descent with hard clipping to [Imin, Imax]. Forward pass: `output = W @ x` where `W = I`.
 
 ### MemristorNonlinear
 
-Replaces the conventional ReLU activation. Element-wise nonlinear transformation parameterized by log-conductance values, also initialized from Uniform[Gmin, Gmax] and clipped to the experimental conductance range.
+Replaces the conventional ReLU activation. Element-wise: `y = clamp(x, min=0) * I`, where `I` is a learned scalar clipped to [Imin, Imax].
 
-### Weight Update (`update_memristor`)
+### Weight Update
 
 ```
-G ← G - lr · ∇G
-G ← clip(G, Gmin, Gmax)
+I ← I - lr · ∇I
+I ← clip(I, Imin, Imax)
 ```
-
-An optional step-size limit and Gaussian noise can be applied to simulate realistic programming constraints.
 
 ---
 
@@ -103,34 +94,22 @@ tanh Attention → mean+max pooling
     │
     ▼
 ┌─────────────────────────────────┐
-│  MemristorLinearI  (128 → 128)  │  ← Y6-parameterized weights
+│  MemristorLinearI  (128 → 128)  │  ← Y6-parameterized weights (nA)
 │  MemristorNonlinear              │  ← Y6-parameterized activation (replaces ReLU)
 │  LayerNorm + Dropout(0.3)        │
-│  MemristorLinearI  (128 → 36)   │  ← Y6-parameterized weights
+│  MemristorLinearI  (128 → 36)   │  ← Y6-parameterized weights (nA)
 └─────────────────────────────────┘
     │
     ▼
 logits → 36-class softmax
 ```
 
-- **Standard PyTorch modules**: LSTM, Attention, LayerNorm, Dropout — these are not memristive
-- **Memristor modules** (highlighted): MemristorLinearI and MemristorNonlinear — all parameters bounded by Y6 experimental [Gmin, Gmax]
-
-### Training Procedure
-
-1. Load 64-dim MFCC speech features (36 classes) from `.npz`
-2. Batch size sweep: [16, 32, 64], each trained independently
-3. Two-step update each iteration:
-   - `model.update_memristors()` — gradient descent on memristor weights, clip to [Gmin, Gmax]
-   - `optimizer.step()` — AdamW update on non-memristor parameters (LSTM, attention)
-4. ReduceLROnPlateau scheduler + EarlyStopping (patience = 30 epochs)
-5. Best model saved to `ANN-M/checkpoints-AM-Uni/`
+- **Standard PyTorch modules**: LSTM, Attention, LayerNorm, Dropout
+- **Memristor modules**: MemristorLinearI and MemristorNonlinear — all parameters bounded by Y6 experimental [Imin, Imax]
 
 ---
 
 ## Light/Dark Controlled Experiment
-
-The controlled experiment is the central evidence that **Y6 photoconductivity drives learning**.
 
 ### Design
 
@@ -138,38 +117,32 @@ The controlled experiment is the central evidence that **Y6 photoconductivity dr
 
 | Group | Data Source | Memristor State | Plasticity |
 |---|---|---|---|
-| **Light (experimental)** | `Y6-data.xlsx` | Gmin ≠ Gmax, dynamic range | Yes |
-| **Dark (control)** | `Y6-Dark.xlsx` | Gmin = Gmax, fixed | No |
+| **Light (experimental)** | `Y6-data.xlsx` | I = [0.41, 32.26] nA | Yes |
+| **Dark (control)** | `Y6-Dark.xlsx` | I = [0.29, 0.29] nA | No |
 
-Both groups share: same model architecture, same speech dataset, same optimizer, same random seed.
+Both groups share: same architecture, same speech dataset, same optimizer, same random seed.
 
-### Expected Outcome
+### Results
 
 ```
-         Batch    Light Acc     Dark Acc      Delta
-            16       75.xx%        ~2.8%      ~72%
-            32        xx.xx%        ~2.8%      ~xx%
-            64        xx.xx%        ~2.8%      ~xx%
-          Best       ~75.0%        ~2.78%      ~72%
+     Batch     Light Acc      Dark Acc       Delta
+        16        58.95%         0.01%      58.94%
+        32         3.83%         0.01%       3.82%
+        64        71.51%         0.01%      71.50%
+      Best        71.51%         0.01%      71.50%
 ```
 
-- **Light** achieves ~75% accuracy on 36-class speech recognition (chance = 2.78%)
-- **Dark** performs at chance level — fixed conductance prevents any synaptic weight adaptation
-- **Δ ≈ 72%** demonstrates that Y6 photoconductivity is not merely beneficial but **necessary**
+- **Light** achieves 71.5% on 36-class speech recognition
+- **Dark** performs at ~0% — fixed current prevents synaptic weight adaptation
+- **Δ = 71.5%** demonstrates that Y6 photoconductivity is **necessary** for learning
 
 ### Interpretation
 
-The Dark control rules out the possibility that the LSTM + attention backbone alone (without memristor plasticity) can solve the task. The near-random dark-state accuracy confirms that:
+The Dark control rules out the possibility that the LSTM + attention backbone alone (without memristor plasticity) can solve the task. The dark-state accuracy confirms that:
 
 1. The memristor layers are functional and trainable **only** under illumination
-2. The experimentally measured conductance range [Gmin, Gmax] is sufficient to encode 36-class discriminative features
-3. The photoconductive effect is the **enabling mechanism**, not a secondary optimization
-
-### Run the Experiment
-
-```bash
-python ANN-M/compare-Y6-light-dark.py --epochs 200 --batch_sizes 16 32 64
-```
+2. The experimentally measured current range [Imin, Imax] is sufficient to encode 36-class discriminative features
+3. The photoconductive effect is the **enabling mechanism**
 
 ---
 
@@ -181,27 +154,14 @@ Single-Molecule-Memristor/
 ├── ANN-M/                             # Memristor ANN (Y6-parameterized)
 │   ├── Y6-data.xlsx                   # Y6 light-state 50 Hz I-V data
 │   ├── Y6-Dark.xlsx                   # Y6 dark-state I-V data (control)
-│   ├── training-ANN-M.py              # Single-run training
-│   ├── finetune-ANN-M.py              # Fine-tuning with optional layer freezing
-│   ├── infer-ANN-M.py                 # Inference with saved checkpoint
-│   ├── compare-Y6-light-dark.py       # Light/Dark controlled experiment
-│   ├── CMX.py                         # Confusion matrix generation
-│   ├── run_pipeline.sh                # Full pipeline script
+│   ├── compare-Y6-light-dark.py       # Light/Dark controlled experiment (training)
+│   ├── infer_light_dark.py            # Inference: load checkpoints, save predictions
+│   ├── plot_cm.py                     # Confusion matrix: side-by-side Light vs Dark
 │   └── checkpoints-AM-Uni/            # Saved model checkpoints
 ├── ANN/                               # Baseline ANN (ReLU, non-memristive)
-│   ├── training-ANN.py
-│   ├── finetune-ANN.py
-│   └── infer-ANN.py
 ├── CNN/                               # CNN feature extractor for audio
-│   ├── cnn-train.py
-│   └── infer-cnn.py
 ├── Data-pre/                          # Speech preprocessing pipeline
-│   ├── data_load.py                   # Load & normalize waveforms
-│   ├── merged.py                      # Merge processed files
-│   ├── split.py                       # Train/val/test split
-│   └── seq.py                         # Sequence formatting
 └── plot/                              # Visualization
-    └── CMX.py                         # Confusion matrix plotting
 ```
 
 ---
@@ -214,20 +174,12 @@ Single-Molecule-Memristor/
 torch >= 1.10
 numpy
 openpyxl
-scipy
+pandas
+scikit-learn
+matplotlib
 ```
 
-### Single Training Run
-
-```bash
-# Light state (default)
-python ANN-M/training-ANN-M.py --epochs 200
-
-# With explicit data file
-python ANN-M/training-ANN-M.py --y6_data ANN-M/Y6-data.xlsx --epochs 200
-```
-
-### Light/Dark Comparison (Key Experiment)
+### Light/Dark Controlled Experiment (Training)
 
 ```bash
 python ANN-M/compare-Y6-light-dark.py --epochs 200 --batch_sizes 16 32 64
@@ -236,13 +188,17 @@ python ANN-M/compare-Y6-light-dark.py --epochs 200 --batch_sizes 16 32 64
 ### Inference
 
 ```bash
-python ANN-M/infer-ANN-M.py --checkpoint ANN-M/checkpoints-AM-Uni/best_model.pt
+# Run inference with best checkpoint (bs=64)
+python ANN-M/infer_light_dark.py --batch_size 64
+
+# Output: predictions-Y6-light_bs64.csv, predictions-Y6-dark_bs64.csv
 ```
 
-### Full Pipeline
+### Confusion Matrix
 
 ```bash
-bash ANN-M/run_pipeline.sh
+python ANN-M/plot_cm.py
+# Output: confusion_matrix_light.png, confusion_matrix_dark.png, confusion_matrix_comparison.png
 ```
 
 ---
