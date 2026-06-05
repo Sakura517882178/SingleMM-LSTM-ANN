@@ -6,7 +6,7 @@
 
 ## Highlights
 
-- **All memristor weights are directly parameterized by measured Y6 single-molecule junction current (nA)** — no hand-tuned or arbitrary values
+- **All memristor weights are directly parameterized by measured Y6 single-molecule junction current (nA)**
 - **Light/Dark controlled experiment**: dark-state memristor (Imin = Imax, fixed current) yields 0.01% accuracy, proving that Y6 photoconductivity is essential to device function
 - **Light state achieves 71.5%** on 36-class Google Speech Commands; dark state performs no better than random
 - **Stable-region extraction**: forming cycles (first 12 periods, t < 240 ms) excluded; P5/P99.9 percentile filtering removes transient spikes
@@ -192,13 +192,6 @@ python ANN-M/compare-Y6-light-dark.py --epochs 200 --batch_sizes 16 32 64
 python ANN-M/infer_light_dark.py --batch_size 64
 
 # Output: predictions-Y6-light_bs64.csv, predictions-Y6-dark_bs64.csv
-```
-
-### Confusion Matrix
-
-```bash
-python ANN-M/plot_cm.py
-# Output: confusion_matrix_light.png, confusion_matrix_dark.png, confusion_matrix_comparison.png
 ```
 
 ---
